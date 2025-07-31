@@ -1,0 +1,23 @@
+function validate() {
+let password = document.getElementById("password").value;
+let date = document.getElementById("date").value;
+let url = document.getElementById("url").value;
+let passwordRegex = /^(?=.*[A-Z])(?=.*[a-z])(?=.*\d.*\d)(?=.*[!@#$%^&*(),.?":{}|<>]).
+{9,}$/;
+setValidationMessage("password-msg", passwordRegex.test(password));
+let dateRegex = /^(?:(?:0[1-9]|1[0-2])\/(?:0[1-9]|[12][0-9]|3[01])\/\d{4}|\d{4}-(?:0[1-9]|
+1[0-2])-(?:0[1-9]|[12][0-9]|3[01]))$/;
+setValidationMessage("date-msg", dateRegex.test(date));
+let urlRegex = /^(https?:\/\/)?(www\.)?[a-zA-Z0-9-]+(\.[a-zA-Z]{2,})+$/;
+setValidationMessage("url-msg", urlRegex.test(url));
+}
+function setValidationMessage(elementId, isValid) {
+let messageElement = document.getElementById(elementId);
+if (isValid) {
+messageElement.textContent = "Valid";
+messageElement.className = "valid";
+} else {
+messageElement.textContent = "Invalid";
+messageElement.className = "invalid";
+}
+}
