@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Validation Form</title>
+<link rel="stylesheet" href="githika.css">
+</head>
+<body>
+<h3>VALIDATION FORM:<br><br>
+<label for="password">Password:</label>
+<input type="text" id="password">
+<label for="date">Date:</label>
+<input type="text" id="date" placeholder="MM/DD/YYYY or YYYY-MM-DD">
+<label for="url">URL:</label>
+<input type="text" id="url">
+<button onclick="validate()">Validate</button></h3>
+<script src="githika.js"></script>
+</body>
+</html>
