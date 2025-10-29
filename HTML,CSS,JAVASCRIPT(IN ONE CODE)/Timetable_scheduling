@@ -1,0 +1,354 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Exam Timetable Scheduler — Graph Coloring</title>
+  <style>
+    :root{
+      --bg:#0f1724; --card:#0b1220; --muted:#9aa4b2; --accent:#60a5fa;
+    }
+    body{font-family:Inter,ui-sans-serif,system-ui,Segoe UI,Roboto,Helvetica,Arial; margin:0; background:linear-gradient(180deg,#071024 0%,#071020 60%); color:#e6eef8}
+    .container{max-width:1100px;margin:28px auto;padding:20px}
+    header{display:flex;align-items:center;gap:16px;margin-bottom:18px}
+    header h1{font-size:20px;margin:0}
+    .grid{display:grid;grid-template-columns:360px 1fr;gap:18px}
+    .card{background:rgba(255,255,255,0.03);padding:14px;border-radius:12px;box-shadow:0 6px 18px rgba(2,6,23,0.6)}
+    label{display:block;font-size:13px;color:var(--muted);margin-bottom:6px}
+    input[type="text"],select{width:100%;padding:8px 10px;border-radius:8px;border:1px solid rgba(255,255,255,0.04);background:transparent;color:inherit}
+    button{background:var(--accent);border:none;padding:8px 12px;border-radius:10px;color:#032;cursor:pointer}
+    .small{font-size:13px}
+    .subjects-list{max-height:220px;overflow:auto;margin-top:8px;border-radius:8px;padding:8px;border:1px dashed rgba(255,255,255,0.03)}
+    .subject-item{display:flex;align-items:center;justify-content:space-between;padding:6px 4px;border-radius:6px}
+    .subject-item span{font-weight:600}
+    .conflict-row{display:flex;gap:8px;align-items:center;margin-top:8px}
+    .conflict-row select{flex:1}
+    #canvasWrap{height:600px;border-radius:12px;display:flex;flex-direction:column}
+    #graphCanvas{flex:1;border-radius:10px;background:linear-gradient(180deg, rgba(255,255,255,0.01), rgba(255,255,255,0.00));}
+    .legend{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}
+    .legend .sw{width:28px;height:18px;border-radius:4px;display:inline-block}
+    .timetable{margin-top:12px}
+    table{width:100%;border-collapse:collapse}
+    th,td{padding:8px;border-bottom:1px dashed rgba(255,255,255,0.03);text-align:left}
+    footer{margin-top:14px;color:var(--muted);font-size:13px}
+    .actions{display:flex;gap:8px;flex-wrap:wrap}
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>Exam Timetable Scheduler — Graph Coloring</h1>
+      <div style="margin-left:auto;color:var(--muted);font-size:13px">Greedy coloring (degree order) → produces compact schedules</div>
+    </header>
+
+    <div class="grid">
+      <div class="card">
+        <div>
+          <label>Subject name</label>
+          <input id="subjectName" type="text" placeholder="e.g. Math101" />
+          <div style="display:flex;gap:8px;margin-top:8px">
+            <button id="addSubject">Add Subject</button>
+            <button id="sampleData" class="small">Load Sample</button>
+            <button id="clearAll" class="small">Clear All</button>
+          </div>
+        </div>
+
+        <div style="margin-top:12px">
+          <label>Subjects</label>
+          <div class="subjects-list" id="subjectsList"></div>
+        </div>
+
+        <div style="margin-top:12px">
+          <label>Define Conflict (two subjects that cannot be at same time)</label>
+          <div class="conflict-row">
+            <select id="confA"></select>
+            <select id="confB"></select>
+            <button id="addConflict">Add</button>
+          </div>
+          <div style="margin-top:8px;color:var(--muted);font-size:13px">Conflicts are undirected edges between subjects.</div>
+          <div style="margin-top:8px" id="conflictsList"></div>
+        </div>
+
+        <div style="margin-top:12px">
+          <label>Time Slot Templates (map colors to times)</label>
+          <input id="slotTemplate" type="text" placeholder="e.g. Slot 1: 9:00-12:00; Slot 2: 13:00-16:00" />
+          <div style="display:flex;gap:8px;margin-top:8px"><button id="runColor">Generate Timetable</button><button id="autoAssign" class="small">Auto Generate Slots</button></div>
+        </div>
+
+        <div style="margin-top:12px">
+          <div class="actions">
+            <button id="exportCSV" class="small">Export Timetable CSV</button>
+            <button id="downloadJSON" class="small">Download JSON</button>
+          </div>
+        </div>
+
+        <footer>
+          <div style="margin-top:8px">Tip: Try the sample data to see a 6-subject example. You can extend for real timetables and integrate constraints like room capacity later.</div>
+        </footer>
+      </div>
+
+      <div class="card" id="canvasWrap">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:8px">
+          <div>
+            <strong>Graph Visualizer</strong>
+            <div style="font-size:13px;color:var(--muted)">Nodes = subjects, edges = conflicts. Colors = exam slots.</div>
+          </div>
+          <div style="display:flex;gap:8px;align-items:center">
+            <button id="relayout" class="small">Relayout</button>
+            <button id="shuffleColors" class="small">Shuffle Colors</button>
+          </div>
+        </div>
+
+        <svg id="graphCanvas" viewBox="0 0 900 600" preserveAspectRatio="xMidYMid meet"></svg>
+
+        <div class="legend" id="legend"></div>
+
+        <div class="timetable card" style="margin-top:10px;padding:12px;background:rgba(255,255,255,0.02)">
+          <strong>Generated Timetable</strong>
+          <div id="timetableArea"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // Simple in-browser exam scheduler using graph coloring (greedy by degree)
+    const subjects = [];
+    const conflicts = []; // list of [a,b] indices
+
+    const colorsPalette = [
+      '#ef476f','#ffd166','#06d6a0','#118ab2','#073b4c','#8a2be2','#ff7f50','#2a9d8f','#e63946','#f4a261'
+    ];
+
+    const el = id => document.getElementById(id);
+    const subjectName = el('subjectName');
+    const addSubjectBtn = el('addSubject');
+    const subjectsList = el('subjectsList');
+    const confA = el('confA');
+    const confB = el('confB');
+    const addConflictBtn = el('addConflict');
+    const conflictsList = el('conflictsList');
+    const runColorBtn = el('runColor');
+    const slotTemplate = el('slotTemplate');
+    const graphCanvas = el('graphCanvas');
+    const legend = el('legend');
+    const timetableArea = el('timetableArea');
+    const sampleDataBtn = el('sampleData');
+    const clearAllBtn = el('clearAll');
+    const autoAssignBtn = el('autoAssign');
+    const exportCSVBtn = el('exportCSV');
+    const downloadJSONBtn = el('downloadJSON');
+    const relayoutBtn = el('relayout');
+    const shuffleColorsBtn = el('shuffleColors');
+
+    function refreshSelectors(){
+      [confA, confB].forEach(s => {
+        const val = s.value;
+        s.innerHTML = '';
+        subjects.forEach((sub, i) => {
+          const o = document.createElement('option'); o.value = i; o.textContent = sub.name; s.appendChild(o);
+        });
+        s.value = val || (subjects.length?0:"");
+      });
+    }
+
+    function renderSubjects(){
+      subjectsList.innerHTML = '';
+      subjects.forEach((s, idx) =>{
+        const row = document.createElement('div'); row.className='subject-item';
+        const left = document.createElement('div'); left.style.display='flex'; left.style.gap='8px'; left.style.alignItems='center';
+        const badge = document.createElement('div'); badge.style.width='36px'; badge.style.height='28px'; badge.style.borderRadius='6px'; badge.style.display='flex'; badge.style.alignItems='center'; badge.style.justifyContent='center'; badge.style.background='rgba(255,255,255,0.03)'; badge.textContent = idx+1;
+        left.appendChild(badge);
+        const name = document.createElement('span'); name.textContent = s.name; left.appendChild(name);
+        row.appendChild(left);
+        const right = document.createElement('div');
+        const del = document.createElement('button'); del.className='small'; del.textContent='Delete'; del.onclick = ()=>{ deleteSubject(idx)};
+        right.appendChild(del);
+        row.appendChild(right);
+        subjectsList.appendChild(row);
+      });
+      refreshSelectors();
+    }
+
+    function deleteSubject(idx){
+      subjects.splice(idx,1);
+      // remove conflicts involving idx
+      for(let i=conflicts.length-1;i>=0;i--){
+        const [a,b]=conflicts[i];
+        if(a===idx||b===idx) conflicts.splice(i,1);
+        else{
+          // shift indices greater than idx
+          if(a>idx) conflicts[i][0]=a-1;
+          if(b>idx) conflicts[i][1]=b-1;
+        }
+      }
+      renderSubjects(); renderConflicts(); drawGraph();
+    }
+
+    addSubjectBtn.onclick = ()=>{
+      const name = subjectName.value.trim();
+      if(!name) return alert('Enter subject name');
+      subjects.push({name, color:null}); subjectName.value=''; renderSubjects(); drawGraph();
+    }
+
+    addConflictBtn.onclick = ()=>{
+      if(subjects.length<2) return alert('Need at least two subjects');
+      const a = parseInt(confA.value); const b = parseInt(confB.value);
+      if(a===b) return alert('Pick two different subjects');
+      // avoid duplicates (undirected)
+      if(conflicts.some(([x,y])=> (x===a&&y===b)||(x===b&&y===a))) return alert('Conflict already exists');
+      conflicts.push([a,b]); renderConflicts(); drawGraph();
+    }
+
+    function renderConflicts(){
+      conflictsList.innerHTML='';
+      conflicts.forEach((c, i)=>{
+        const row = document.createElement('div'); row.className='subject-item';
+        row.innerHTML = `<div><strong>${subjects[c[0]].name}</strong> ↔ <strong>${subjects[c[1]].name}</strong></div>`;
+        const del = document.createElement('button'); del.className='small'; del.textContent='Remove'; del.onclick = ()=>{ conflicts.splice(i,1); renderConflicts(); drawGraph(); };
+        row.appendChild(del);
+        conflictsList.appendChild(row);
+      });
+    }
+
+    function loadSample(){
+      subjects.length=0; conflicts.length=0;
+      ['Math101','Physics201','Chem101','CS210','Eng102','Bio110'].forEach(n=>subjects.push({name:n,color:null}));
+      // conflicts sample
+      const map = {0:[1,2],1:[0,2,3],2:[0,1,4],3:[1,4],4:[2,3,5],5:[4]};
+      for(const a in map){ map[a].forEach(b=>{ if(a<b) conflicts.push([parseInt(a),b]); }); }
+      renderSubjects(); renderConflicts(); drawGraph();
+    }
+
+    sampleDataBtn.onclick = loadSample;
+    clearAllBtn.onclick = ()=>{ if(!confirm('Clear all subjects and conflicts?')) return; subjects.length=0; conflicts.length=0; renderSubjects(); renderConflicts(); drawGraph(); }
+
+    // ----------------- Graph drawing ------------------
+    function drawGraph(coloring){
+      const w=900,h=600; graphCanvas.innerHTML='';
+      if(subjects.length===0) return;
+      // compute circle layout
+      const cx=w/2, cy=h/2, R=Math.min(w,h)/2 - 80;
+      const nodes = subjects.map((s,i)=>{
+        const ang = (i/subjects.length)*Math.PI*2 - Math.PI/2;
+        return {x:cx+Math.cos(ang)*R, y:cy+Math.sin(ang)*R, name:s.name, idx:i};
+      });
+      // draw edges
+      conflicts.forEach(([a,b])=>{
+        const A=nodes[a], B=nodes[b];
+        const line = document.createElementNS('http://www.w3.org/2000/svg','line');
+        line.setAttribute('x1',A.x); line.setAttribute('y1',A.y); line.setAttribute('x2',B.x); line.setAttribute('y2',B.y);
+        line.setAttribute('stroke','rgba(255,255,255,0.12)'); line.setAttribute('stroke-width','2'); graphCanvas.appendChild(line);
+      });
+      // draw nodes
+      nodes.forEach(n=>{
+        const g = document.createElementNS('http://www.w3.org/2000/svg','g');
+        g.setAttribute('transform',`translate(${n.x},${n.y})`);
+        const circ = document.createElementNS('http://www.w3.org/2000/svg','circle');
+        const col = (coloring && coloring[n.idx]!=null)? colorsPalette[coloring[n.idx] % colorsPalette.length] : 'rgba(255,255,255,0.04)';
+        circ.setAttribute('r',28); circ.setAttribute('fill',col); circ.setAttribute('stroke','rgba(255,255,255,0.06)'); circ.setAttribute('stroke-width','2');
+        g.appendChild(circ);
+        const text = document.createElementNS('http://www.w3.org/2000/svg','text');
+        text.setAttribute('x',0); text.setAttribute('y',4); text.setAttribute('font-size','10'); text.setAttribute('text-anchor','middle'); text.setAttribute('fill','#0b1220');
+        text.textContent = n.name; g.appendChild(text);
+        graphCanvas.appendChild(g);
+      });
+      // legend
+      updateLegend(coloring);
+    }
+
+    function updateLegend(coloring){
+      legend.innerHTML='';
+      if(!coloring) return;
+      const used = [...new Set(coloring)].sort((a,b)=>a-b);
+      used.forEach(cidx=>{
+        const sw = document.createElement('div'); sw.className='sw'; sw.style.background=colorsPalette[cidx%colorsPalette.length];
+        const label = document.createElement('div'); label.style.marginLeft='6px'; label.style.color='var(--muted)'; label.style.fontSize='13px'; label.textContent = `Slot ${cidx+1}`;
+        const wrap = document.createElement('div'); wrap.style.display='flex'; wrap.style.alignItems='center'; wrap.style.gap='8px'; wrap.appendChild(sw); wrap.appendChild(label);
+        legend.appendChild(wrap);
+      });
+    }
+
+    // ----------------- Coloring algorithm (greedy by degree) -----------------
+    function greedyColoring(){
+      const n = subjects.length;
+      const adj = Array.from({length:n}, ()=> new Set());
+      conflicts.forEach(([a,b])=>{ adj[a].add(b); adj[b].add(a); });
+      // order vertices by degree desc
+      const order = Array.from({length:n}, (_,i)=>i).sort((a,b)=>adj[b].size - adj[a].size);
+      const color = Array(n).fill(null);
+      order.forEach(v=>{
+        const forbidden = new Set();
+        adj[v].forEach(nb=>{ if(color[nb]!=null) forbidden.add(color[nb]); });
+        let c=0; while(forbidden.has(c)) c++; color[v]=c;
+      });
+      // ensure result corresponds to original index order
+      return color;
+    }
+
+    runColorBtn.onclick = ()=>{
+      if(subjects.length===0) return alert('Add subjects first');
+      const coloring = greedyColoring();
+      // map colors to subjects
+      subjects.forEach((s,i)=> s.color = coloring[i]);
+      drawGraph(coloring);
+      renderTimetable(coloring);
+    }
+
+    function renderTimetable(coloring){
+      const maxColor = Math.max(...coloring);
+      // parse slot template
+      const tpl = slotTemplate.value.trim();
+      let slots = [];
+      if(tpl){
+        // split by ;
+        slots = tpl.split(';').map(s=>s.trim()).filter(Boolean);
+      }
+      // if slots not provided, auto-generate labels
+      const rows = {};
+      coloring.forEach((c,i)=>{
+        const label = slots[c] || `Slot ${c+1}`;
+        if(!rows[label]) rows[label]=[]; rows[label].push(subjects[i].name);
+      });
+
+      // render
+      let html = '<table><thead><tr><th>Slot</th><th>Subjects</th></tr></thead><tbody>';
+      for(const [slot, arr] of Object.entries(rows)){
+        html += `<tr><td style="vertical-align:top">${slot}</td><td>${arr.map(x=>`<div>${x}</div>`).join('')}</td></tr>`;
+      }
+      html += '</tbody></table>';
+      timetableArea.innerHTML = html;
+    }
+
+    autoAssignBtn.onclick = ()=>{
+      // default times
+      slotTemplate.value = 'Slot 1: 9:00-12:00; Slot 2: 13:00-16:00; Slot 3: 16:30-19:30; Slot 4: 9:00-12:00 (Day 2); Slot 5: 13:00-16:00 (Day 2)';
+      alert('Default time slots created. Run Generate Timetable to apply.');
+    }
+
+    // export CSV
+    exportCSVBtn.onclick = ()=>{
+      if(subjects.length===0) return alert('No timetable to export');
+      const csvLines = ['Subject,Slot'];
+      subjects.forEach(s=> csvLines.push(`${s.name},${s.color!=null?('Slot '+(s.color+1)):'Unassigned'}`));
+      const blob = new Blob([csvLines.join('\n')], {type:'text/csv'});
+      const url = URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download='timetable.csv'; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+    }
+
+    downloadJSONBtn.onclick = ()=>{
+      const payload = {subjects:subjects.map(s=>s.name), conflicts, colors: subjects.map(s=>s.color)};
+      const blob = new Blob([JSON.stringify(payload,null,2)], {type:'application/json'});
+      const url = URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download='timetable.json'; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+    }
+
+    relayoutBtn.onclick = ()=> drawGraph(subjects.map(s=>s.color));
+    shuffleColorsBtn.onclick = ()=>{
+      // rotate palette offset
+      colorsPalette.push(colorsPalette.shift()); drawGraph(subjects.map(s=>s.color));
+    }
+
+    // initial state
+    loadSample();
+  </script>
+</body>
+</html>
